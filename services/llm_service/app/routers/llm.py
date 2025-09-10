@@ -163,7 +163,7 @@ def query_ticket_time(order_id: int) -> str:
         return f"ERROR: {exc}"
 
 
-TOOLS = {"update_ticket_time": update_ticket_time, "query_ticket_time": update_ticket_time}
+TOOLS = {"update_ticket_time": update_ticket_time, "query_ticket_time": query_ticket_time}
 
 
 @router.post("/agent/change_time", response_model=ChangeTimeResponse)
@@ -238,11 +238,11 @@ intent_prompt = ChatPromptTemplate.from_template(
     "notes (string|null). "
     "Slots may include: order_id (int), new_time (ISO-8601 string), route_id (string), "
     "question (string). "
-    'If requesting trips and a route is specified, set action to {{"name": "get_trips", '
-    '{"args": {{"route_id": "<route_id>"}}}}. '
-    'If changing time with order_id & new_time present, set action to '
-    '{{"name": "update_ticket_time", "args": {{"order_id": <int>, "new_time_iso": '
-    '"<ISO-8601>"}}}}. '
+    "If requesting trips and a route is specified, set action to {{\"name\": \"get_trips\", "
+    "\"args\": {{\"route_id\": \"<route_id>\"}}}}. "
+    "If changing time with order_id & new_time present, set action to "
+    "{{\"name\": \"update_ticket_time\", \"args\": {{\"order_id\": <int>, \"new_time_iso\": "
+    "\"<ISO-8601>\"}}}}. "
         "If asking a general question, intent faq with question in slots."
         "\nUser text: {text}\nUser id: {user_id}"
     )
