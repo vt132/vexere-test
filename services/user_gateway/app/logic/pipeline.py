@@ -1,5 +1,7 @@
-from typing import Optional, Tuple, Any
+from typing import Any, Optional, Tuple
+
 import httpx
+
 from ..config import DATA_SERVICE_URL, HTTP_TIMEOUT_SECONDS
 
 
@@ -13,7 +15,9 @@ def detect_intent(text: str, user_id: Optional[int]) -> Tuple[Optional[str], Opt
     return None, None
 
 
-async def fetch_data(intent: Optional[str], user_id: Optional[int], extra: Optional[str]) -> Optional[Any]:
+async def fetch_data(
+    intent: Optional[str], user_id: Optional[int], extra: Optional[str]
+) -> Optional[Any]:
     if not intent:
         return None
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:

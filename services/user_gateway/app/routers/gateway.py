@@ -1,14 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from typing import Any, Dict, List
+
 import httpx
-from typing import Any, Dict, Optional, List
-from ..schemas.gateway import UserRequest, GatewayResponse
-from ..config import LLM_SERVICE_URL, DATA_SERVICE_URL, HTTP_TIMEOUT_SECONDS
+from fastapi import APIRouter, HTTPException
+
+from ..config import DATA_SERVICE_URL, HTTP_TIMEOUT_SECONDS, LLM_SERVICE_URL
 from ..logic.pipeline import detect_intent, fetch_data
-from PIL import Image
+from ..schemas.gateway import GatewayResponse, UserRequest
 
 router = APIRouter()
 
 # whisper = ... load whisper model here if needed ...
+
 
 @router.post("/query", response_model=GatewayResponse)
 async def query(req: UserRequest):
@@ -18,24 +20,30 @@ async def query(req: UserRequest):
         # Use whisper to process voice input (not implemented)
         # extracted_text = whisper.transcribe(req.voice)
         # prompt = f"User said: {extracted_text}\n\n{req.text}"
-        
+
         raise HTTPException(status_code=400, detail="Voice input not supported yet")
     if req.image:
-        # Download and process image input then put it into prompt for MLLM (not supported) 
+        # Download and process image input then put it into prompt for MLLM (not supported)
         # image = Image.open(httpx.get(req.image).content)
         raise HTTPException(status_code=400, detail="Image input not supported yet")
-    
+
     prompt = req.text
     if fetched:
         prompt += f"\nRelevant data: {fetched}"
 
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-        gen = await client.post(f"{LLM_SERVICE_URL}/generate", json={"model": req.model, "prompt": prompt})
+        gen = await client.post(
+            f"{LLM_SERVICE_URL}/generate", json={"model": req.model, "prompt": prompt}
+        )
         if gen.status_code != 200:
             raise HTTPException(status_code=gen.status_code, detail=gen.text)
         payload = gen.json()
 
-    return GatewayResponse(answer=payload.get("output", ""), model=payload.get("model", req.model), meta={"intent": intent, "fetched": fetched})
+    return GatewayResponse(
+        answer=payload.get("output", ""),
+        model=payload.get("model", req.model),
+        meta={"intent": intent, "fetched": fetched},
+    )
 
 
 @router.post("/intents/plan")
@@ -44,13 +52,13 @@ async def plan(req: UserRequest):
         # Use whisper to process voice input (not implemented)
         # extracted_text = whisper.transcribe(req.voice)
         # prompt = f"User said: {extracted_text}\n\n{req.text}"
-        
+
         raise HTTPException(status_code=400, detail="Voice input not supported yet")
     if req.image:
-        # Download and process image input then put it into prompt for MLLM (not supported) 
+        # Download and process image input then put it into prompt for MLLM (not supported)
         # image = Image.open(httpx.get(req.image).content)
         raise HTTPException(status_code=400, detail="Image input not supported yet")
-    
+
     body = {"text": req.text, "user_id": req.user_id}
 
     try:
@@ -60,7 +68,9 @@ async def plan(req: UserRequest):
                 raise HTTPException(status_code=r.status_code, detail=r.text)
             plan = r.json()
     except httpx.ReadTimeout:
-        raise HTTPException(status_code=504, detail="Timeout contacting LLM service for intent planning. Try again.")
+        raise HTTPException(
+            status_code=504, detail="Timeout contacting LLM service for intent planning. Try again."
+        )
 
     # Define available action functions
     async def do_update_ticket_time(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -69,10 +79,19 @@ async def plan(req: UserRequest):
         if order_id is None or not new_time_iso:
             # Fallback: let LLM agent handle extraction from natural text
             async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-                rr = await client.post(f"{LLM_SERVICE_URL}/agent/change_time", json={"question": req.text})
-                return rr.json() if rr.headers.get("content-type", "").startswith("application/json") else {"raw": rr.text}
+                rr = await client.post(
+                    f"{LLM_SERVICE_URL}/agent/change_time", json={"question": req.text}
+                )
+                return (
+                    rr.json()
+                    if rr.headers.get("content-type", "").startswith("application/json")
+                    else {"raw": rr.text}
+                )
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS) as client:
-            rr = await client.post(f"{DATA_SERVICE_URL}/orders/update_time", json={"order_id": order_id, "new_time": new_time_iso})
+            rr = await client.post(
+                f"{DATA_SERVICE_URL}/orders/update_time",
+                json={"order_id": order_id, "new_time": new_time_iso},
+            )
             if rr.status_code != 200:
                 raise HTTPException(status_code=rr.status_code, detail=rr.text)
             return rr.json()

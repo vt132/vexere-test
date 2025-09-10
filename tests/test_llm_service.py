@@ -1,6 +1,7 @@
+import json
 import sys
 import types
-import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -19,7 +20,9 @@ class _DummyDoc:
 class _DummyRetriever:
     def __init__(self, docs=None):
         self._docs = docs or [
-            _DummyDoc("Chính sách đổi vé?", {"answer": "Bạn có thể đổi vé trước giờ khởi hành 24h."}),
+            _DummyDoc(
+                "Chính sách đổi vé?", {"answer": "Bạn có thể đổi vé trước giờ khởi hành 24h."}
+            ),
             _DummyDoc("Phí huỷ vé?", {"answer": "Phụ thuộc vào nhà xe, thường 10-30%."}),
         ]
 
@@ -42,8 +45,14 @@ class _DummyFAISS:
 @pytest.fixture(scope="module")
 def llm_client(monkeypatch):
     # Patch vector store and embeddings before importing the app
-    monkeypatch.setitem(sys.modules, "langchain_community.embeddings", types.SimpleNamespace(HuggingFaceEmbeddings=_DummyEmbeddings))
-    monkeypatch.setitem(sys.modules, "langchain_community.vectorstores", types.SimpleNamespace(FAISS=_DummyFAISS))
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_community.embeddings",
+        types.SimpleNamespace(HuggingFaceEmbeddings=_DummyEmbeddings),
+    )
+    monkeypatch.setitem(
+        sys.modules, "langchain_community.vectorstores", types.SimpleNamespace(FAISS=_DummyFAISS)
+    )
 
     # Import after patching
     from services.llm_service.app.main import app as llm_app
@@ -54,12 +63,16 @@ def llm_client(monkeypatch):
         def __init__(self):
             self.responses = {
                 "faq": types.SimpleNamespace(content="Trả lời FAQ mô phỏng"),
-                "plan": types.SimpleNamespace(content=json.dumps({
-                    "intent": "faq",
-                    "slots": {"question": "Giờ đổi vé?"},
-                    "action": {"name": "faq", "args": {"question": "Giờ đổi vé?"}},
-                    "notes": None,
-                })),
+                "plan": types.SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "intent": "faq",
+                            "slots": {"question": "Giờ đổi vé?"},
+                            "action": {"name": "faq", "args": {"question": "Giờ đổi vé?"}},
+                            "notes": None,
+                        }
+                    )
+                ),
             }
 
         def bind_tools(self, tools):
@@ -68,16 +81,20 @@ def llm_client(monkeypatch):
                 async def ainvoke(self_inner, messages):
                     return types.SimpleNamespace(
                         content="",
-                        tool_calls=[{
-                            "id": "call-1",
-                            "name": "update_ticket_time",
-                            "args": {"order_id": 12, "new_time_iso": "2025-09-15T10:00:00"},
-                        }],
+                        tool_calls=[
+                            {
+                                "id": "call-1",
+                                "name": "update_ticket_time",
+                                "args": {"order_id": 12, "new_time_iso": "2025-09-15T10:00:00"},
+                            }
+                        ],
                     )
+
             return WithTools()
 
         async def ainvoke(self, prompt_or_messages):
-            # Heuristic: planner contains "intent" keys in template; FAQ prompt contains "Ngữ cảnh" marker
+            # Heuristic: planner contains "intent" keys in template
+            # FAQ prompt contains "Ngữ cảnh" marker
             if isinstance(prompt_or_messages, str):
                 # Not expected in our code path, but default to plan
                 return self.responses["plan"]
@@ -93,8 +110,15 @@ def llm_client(monkeypatch):
     class DummyTool:
         def __init__(self, name):
             self.name = name
+
         def invoke(self, args):
-            return json.dumps({"updated": True, "order_id": args.get("order_id"), "new_time": args.get("new_time_iso")})
+            return json.dumps(
+                {
+                    "updated": True,
+                    "order_id": args.get("order_id"),
+                    "new_time": args.get("new_time_iso"),
+                }
+            )
 
     llm_router.TOOLS = {
         "update_ticket_time": DummyTool("update_ticket_time"),
@@ -120,10 +144,12 @@ def test_intents_plan_parses_json(llm_client):
 
 
 def test_agent_change_time_executes_tool_and_returns_final_answer(llm_client):
-    r = llm_client.post("/agent/change_time", json={"question": "Đổi giờ order 12 sang 2025-09-15T10:00:00"})
+    r = llm_client.post(
+        "/agent/change_time", json={"question": "Đổi giờ order 12 sang 2025-09-15T10:00:00"}
+    )
     assert r.status_code == 200, r.text
     data = r.json()
     # Should contain recorded tool call and some answer string
     assert data["tool_calls"], "Expected tool calls recorded"
-    assert any(tc.get("name") == "update_ticket_time" for tc in data["tool_calls"]) 
+    assert any(tc.get("name") == "update_ticket_time" for tc in data["tool_calls"])
     assert isinstance(data["answer"], str) and len(data["answer"]) >= 0

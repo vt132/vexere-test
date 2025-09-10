@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+
 from .routers import llm
-import os
 
 # Simple abstraction layer for multiple model backends
 
@@ -13,6 +13,7 @@ app.include_router(llm.router)
 GPT-5 preview is now enabled for all clients by default. To (optionally) disable
 it for emergency rollback, set environment variable DISABLE_GPT5_PREVIEW=true.
 """
+
 
 @app.get("/health")
 def health():

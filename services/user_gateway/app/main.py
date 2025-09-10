@@ -1,7 +1,8 @@
-from fastapi import FastAPI
 import httpx
+from fastapi import FastAPI
+
+from .config import DATA_SERVICE_URL, LLM_SERVICE_URL
 from .routers import gateway as gateway_router
-from .config import LLM_SERVICE_URL, DATA_SERVICE_URL
 
 app = FastAPI(title="User Request Handling Layer", version="0.1.0")
 app.include_router(gateway_router.router)

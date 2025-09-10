@@ -1,28 +1,28 @@
-import re
 import json
+import re
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from langchain_openai import ChatOpenAI
-from langchain_core.documents import Document
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_core.documents import Document
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
 
+from ..config import BASE_URL, DATA_SERVICE_URL, EMBEDDING_MODEL, HTTP_TIMEOUT_SECONDS, LLM_MODEL
 from ..logic.utils import load_faq_data
-from ..config import BASE_URL, LLM_MODEL, EMBEDDING_MODEL, DATA_SERVICE_URL, HTTP_TIMEOUT_SECONDS
 from ..schemas.llm import (
-    FAQAskRequest,
-    FAQAskResponse,
     ChangeTimeRequest,
     ChangeTimeResponse,
+    FAQAskRequest,
+    FAQAskResponse,
+    IntentAction,
     IntentPlanRequest,
     IntentPlanResponse,
-    IntentAction,
 )
-from langchain_core.tools import tool
-from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, AIMessage
-import httpx
 
 router = APIRouter()
 
@@ -87,8 +87,10 @@ def get_faq_context(question: str) -> str:
 async def faq_ask(req: FAQAskRequest, stream: bool = False):
     if not retriever:
         if stream:
+
             async def err_gen():
                 yield "FAQ data not loaded."
+
             return StreamingResponse(err_gen(), media_type="text/plain")
         return FAQAskResponse(answer="FAQ data not loaded.", context="")
 
@@ -116,6 +118,7 @@ async def faq_ask(req: FAQAskRequest, stream: bool = False):
 
 
 # --- Tool Calling: change ticket time ---
+
 
 @tool("update_ticket_time")
 def update_ticket_time(order_id: int, new_time_iso: str) -> str:
@@ -159,10 +162,8 @@ def query_ticket_time(order_id: int) -> str:
     except Exception as exc:
         return f"ERROR: {exc}"
 
-TOOLS = {
-    "update_ticket_time": update_ticket_time,
-    "query_ticket_time": update_ticket_time
-}
+
+TOOLS = {"update_ticket_time": update_ticket_time, "query_ticket_time": update_ticket_time}
 
 
 @router.post("/agent/change_time", response_model=ChangeTimeResponse)
@@ -178,7 +179,8 @@ async def agent_change_time(req: ChangeTimeRequest):
             content=(
                 "You can update a ticket departure time using the tool 'update_ticket_time'. "
                 "Extract order_id (integer) and new_time_iso (ISO-8601). "
-                "If either is missing or unclear, ask a concise clarification (in Vietnamese) and DO NOT call the tool."
+                "If either is missing or unclear, ask a concise clarification "
+                "(in Vietnamese) and DO NOT call the tool."
             )
         ),
         HumanMessage(content=req.question),
@@ -229,12 +231,18 @@ async def agent_change_time(req: ChangeTimeRequest):
 intent_prompt = ChatPromptTemplate.from_template(
     (
         "You are an intent classifier and action planner for a travel ticketing assistant. "
-        "Classify the user's Vietnamese text into one of: change_time, get_pending_orders, get_trips, faq, unknown. "
-        "Extract slots and propose a single action if applicable. Output strict JSON with keys: "
-        "intent (string, within listed intents), slots (object), action (object|null), notes (string|null). "
-        "Slots may include: order_id (int), new_time (ISO-8601 string), route_id (string), question (string). "
-        "If requesting trips and a route is specified, set action to {{\"name\": \"get_trips\", \"args\": {{\"route_id\": \"<route_id>\"}}}}. "
-        "If changing time with order_id & new_time present, set action to {{\"name\": \"update_ticket_time\", \"args\": {{\"order_id\": <int>, \"new_time_iso\": \"<ISO-8601>\"}}}}. "
+    "Classify the user's Vietnamese text into one of: change_time, get_pending_orders, "
+    "get_trips, faq, unknown. "
+    "Extract slots and propose a single action if applicable. Output strict JSON with keys: "
+    "intent (string, within listed intents), slots (object), action (object|null), "
+    "notes (string|null). "
+    "Slots may include: order_id (int), new_time (ISO-8601 string), route_id (string), "
+    "question (string). "
+    'If requesting trips and a route is specified, set action to {{"name": "get_trips", '
+    '{"args": {{"route_id": "<route_id>"}}}}. '
+    'If changing time with order_id & new_time present, set action to '
+    '{{"name": "update_ticket_time", "args": {{"order_id": <int>, "new_time_iso": '
+    '"<ISO-8601>"}}}}. '
         "If asking a general question, intent faq with question in slots."
         "\nUser text: {text}\nUser id: {user_id}"
     )
@@ -243,21 +251,20 @@ intent_prompt = ChatPromptTemplate.from_template(
 
 @router.post("/intents/plan", response_model=IntentPlanResponse)
 async def plan_intent(req: IntentPlanRequest):
-        prompt = intent_prompt.format(
-            text=req.text,
-            user_id=getattr(req, "user_id", None) # user_id is optional
-        )
-        msg = await llm.ainvoke(prompt)
-        print(msg)
+    prompt = intent_prompt.format(
+        text=req.text, user_id=getattr(req, "user_id", None)  # user_id is optional
+    )
+    msg = await llm.ainvoke(prompt)
+    print(msg)
 
-        content = msg.content if hasattr(msg, "content") else str(msg)
-        match = re.search(r"\{[\s\S]*\}", content)
-        data = json.loads(match.group(0) if match else content)
-        # Coerce types and defaults
-        intent = str(data.get("intent", "unknown"))
-        slots = data.get("slots", {}) or {}
-        action = data.get("action") or None
-        if action and isinstance(action, dict):
-            action = IntentAction(name=str(action.get("name", "")), args=action.get("args", {}) or {})
-        notes = data.get("notes")
-        return IntentPlanResponse(intent=intent, slots=slots, action=action, notes=notes)
+    content = msg.content if hasattr(msg, "content") else str(msg)
+    match = re.search(r"\{[\s\S]*\}", content)
+    data = json.loads(match.group(0) if match else content)
+    # Coerce types and defaults
+    intent = str(data.get("intent", "unknown"))
+    slots = data.get("slots", {}) or {}
+    action = data.get("action") or None
+    if action and isinstance(action, dict):
+        action = IntentAction(name=str(action.get("name", "")), args=action.get("args", {}) or {})
+    notes = data.get("notes")
+    return IntentPlanResponse(intent=intent, slots=slots, action=action, notes=notes)

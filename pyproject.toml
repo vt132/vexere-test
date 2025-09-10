@@ -45,28 +45,7 @@ where = ["services"]
 [tool.black]
 line-length = 100
 target-version = ["py311"]
-exclude = "(\\.venv|venv|env|dist|build|__pycache__|\.mypy_cache|\.pytest_cache)"
-
-[tool.ruff]
-line-length = 100
-target-version = "py311"
-exclude = [
-  ".venv",
-  "venv",
-  "env",
-  "dist",
-  "build",
-  "__pycache__",
-]
-select = [
-  "E",   # pycodestyle errors (PEP8)
-  "W",   # pycodestyle warnings
-  "F",   # Pyflakes
-  "I",   # isort
-  "B",   # flake8-bugbear
-  "UP",  # pyupgrade
-]
-ignore = []
+exclude = '(\.venv|venv|env|dist|build|__pycache__|\.mypy_cache|\.pytest_cache)'
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]
